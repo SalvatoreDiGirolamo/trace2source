@@ -2,6 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { POINT_CONVERSION_COMPRESSED } from 'constants';
+import { isMainThread } from 'worker_threads';
 
 type TranlationCache = { [label: string]: SourceCodeLine };
 
@@ -102,7 +103,7 @@ function highlightLines(text_editor:vscode.TextEditor, line_start:number, line_s
 }
 
 function highlightTrace(trace_translation_cache:TranlationCache, trace_editor:vscode.TextEditor, ws:vscode.WorkspaceFolder, binfile_uri:string, source:SourceCodeLine){
-/*	
+
 	trace_editor.visibleRanges.forEach( range => {
 		let trace_line_start = range.start.line;
 		let trace_line_stop = range.end.line;
@@ -110,14 +111,15 @@ function highlightTrace(trace_translation_cache:TranlationCache, trace_editor:vs
 		let decs:vscode.DecorationOptions [] = [];
 		for (let i=trace_line_start; i<=trace_line_stop; i++){
 			let trace_line = new TraceLine(trace_editor.document.lineAt(i).text, trace_regex);
-			trace_line.resolve(ws, binfile_uri).then( (other_source) => {
+			trace_line.resolve(trace_translation_cache, ws, binfile_uri).then( (other_source) => {
 				if (other_source.filepath === source.filepath) {
-					highlightLine(trace_editor, i, false, false, decs);
+					highlightLines(trace_editor, i, i, i, false, false, decs);
 				}
 			});
 		}
 	});
-*/
+
+/*
 	let decs:vscode.DecorationOptions [] = [];
 	//highlightLines(trace_editor, 0, trace_editor.document.lineCount-1, 0, false, false, decs);
 
@@ -129,7 +131,7 @@ function highlightTrace(trace_translation_cache:TranlationCache, trace_editor:vs
 			}
 		});
 	});
-
+*/
 }
 
 // this method is called when your extension is activated
@@ -159,19 +161,66 @@ export function activate(context: vscode.ExtensionContext) {
 
 	let current_source_code_line:SourceCodeLine;
 
+
+	let trace_translation_cache:TranlationCache = {};
+
+
+	let trace_translation_index:TranlationCache = {};
+	let trace_lines = trace_document.getText().split("\n");
+
+	vscode.window.withProgress(
+		{
+		  location: vscode.ProgressLocation.Notification,
+		  title: 'My long running operation'
+		},
+		async progress => {
+			// Progress is shown while this function runs.
+			// It can also return a promise which is then awaited
+			progress.report({ message: 'Doing this' });
+			
+		
+			progress.report({ message: 'Doing that' });
+		
+
+			trace_lines.forEach(  async (line) => { 
+				let trace_line = new TraceLine(line, trace_regex);
+				let promise = trace_line.resolve(trace_translation_cache, ws, binfile_uri).then( (source) => {
+					trace_translation_index[trace_line.pc] = source;
+				});
+				await promise;
+			});
+
+		}
+	  );
+
+/*
+	vscode.window.withProgress({location: ProgressLocation.Notification,
+		title: "I am long running!",
+		cancellable: true)}, (progress, token) => {
+
+		});
+
+	trace_lines.forEach(  async (line) => { 
+		let trace_line = new TraceLine(line, trace_regex);
+		let promise = trace_line.resolve(trace_translation_cache, ws, binfile_uri).then( (source) => {
+			trace_translation_index[trace_line.pc] = source;
+		});
+		await promise;
+	});
+
+*/
 	vscode.window.showOpenDialog(open_options).then(fileUri => {
 		if (fileUri && fileUri[0]) {
 			binfile_uri = fileUri[0].fsPath;
 		}
 	});
 
-	let trace_translation_cache:TranlationCache = {};
-	/*vscode.window.onDidChangeTextEditorVisibleRanges(changeEvent => {
+	vscode.window.onDidChangeTextEditorVisibleRanges(changeEvent => {
 
 		if (changeEvent.textEditor.document !== trace_document || current_source_code_line === undefined) {return;}
-		highlightTrace(trace_editor, ws, binfile_uri, current_source_code_line);
+		highlightTrace(trace_translation_cache, trace_editor, ws, binfile_uri, current_source_code_line);
 
-	});*/
+	});
 
 	vscode.window.onDidChangeTextEditorSelection(changeEvent => {
 
@@ -211,13 +260,14 @@ export function activate(context: vscode.ExtensionContext) {
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand('extension.helloWorld', () => {
 		// The code you place here will be executed every time your command is executed
-
+	
 		// Display a message box to the user
 		vscode.window.showInformationMessage('Hello World!');
 	});
 
 	context.subscriptions.push(disposable);
 }
+
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
