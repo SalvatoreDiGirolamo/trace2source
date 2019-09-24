@@ -1,7 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { POINT_CONVERSION_COMPRESSED, SSL_OP_SSLEAY_080_CLIENT_DH_BUG } from 'constants';
+import { POINT_CONVERSION_COMPRESSED, SSL_OP_SSLEAY_080_CLIENT_DH_BUG, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS } from 'constants';
 import { isMainThread } from 'worker_threads';
 import { prependOnceListener } from 'cluster';
 import { resolveCliPathFromVSCodeExecutablePath } from 'vscode-test';
@@ -10,7 +10,8 @@ import { TLSSocket } from 'tls';
 type PCIndex = { [label: string]: SourceLine };
 type TranlationIndex = { [label: number]: TraceLine };
 type SourceLineCache = { [label: string]: SourceLine };
-type FileIndex = { [label: string]: number []};
+type FileIndex = { [label: string]: TraceLine []};
+type FileDecIndex = { [label: string]: vscode.Range []};
 
 
 
@@ -45,13 +46,15 @@ class TraceLine {
 	cycles:number;
 	pc:string;
 	trace_line_num:number;
+	trace_line_length:number;
 	source_lines:SourceLine[];
 	
-	constructor(pc:string, cycles:number, trace_line_num:number){
+	constructor(pc:string, cycles:number, trace_line_num:number, trace_line_length:number){
 		this.pc = pc;
 		this.cycles = cycles;
 		this.source_lines = [];
 		this.trace_line_num = trace_line_num;
+		this.trace_line_length = trace_line_length;
 	}
 }
 
@@ -64,6 +67,7 @@ class Addr2Line {
 	source_line_objs:SourceLineCache;
 	pcindex:PCIndex;
 	fileindex:FileIndex;
+	filedecindex:FileDecIndex;
 
 	constructor(workspace:vscode.WorkspaceFolder, binfile_path:string, regex:string){
 		this.workspace = workspace;
@@ -73,6 +77,7 @@ class Addr2Line {
 		this.source_line_objs = {};
 		this.pcindex = {};
 		this.fileindex = {};
+		this.filedecindex = {};
 	}
 
 	async translate_lines(trace_lines:string[]){
@@ -87,10 +92,10 @@ class Addr2Line {
 				//console.log("i: " + i + " trace_lines.length: " + trace_lines.length);
 				let trace_lines_obj = trace_lines.slice(i, i + slice - 1).map( (line, index) => { 
 					let matches = line.match(this.regex);
-					if (matches===null || matches.length<1) {return new TraceLine("0", 0, 0);}
+					if (matches===null || matches.length<1) {return new TraceLine("0", 0, 0, 0);}
 					const cycles=parseInt(matches[1]);
 					const pc=matches[2];
-					return new TraceLine(pc, cycles, i + index);
+					return new TraceLine(pc, cycles, i + index, line.length);
 				});
 
 
@@ -136,16 +141,19 @@ class Addr2Line {
 										this.source_line_objs[stdout_line] = new SourceLine(source_path, source_line, source_uri);
 										//console.log("Source line length: " + Object.keys(this.source_line_objs.length));
 									}
-									tl.source_lines.push(this.source_line_objs[stdout_line]);
-									//this.fileindex[this.source_line_objs[stdout_line].path].push(tl.trace_line_num);
-									//console.log("obj index: " + trace_obj_index + "; trace line: " + tl.trace_line_num);
 									//console.log("pushing " + this.source_line_objs[stdout_line].path + " to: " + tl.trace_line_num + " len: " + tl.source_lines.length);
-									/*
-									if (tl.source_lines.length === 1){
-										console.log("Adding line " + tl.trace_line_num + " to index; current len: " + Object.keys(this.translation_index).length);
-										this.translation_index[tl.trace_line_num] = tl;
+
+									tl.source_lines.push(this.source_line_objs[stdout_line]);
+									const file_idx_key = this.source_line_objs[stdout_line].path;
+									if (this.fileindex[file_idx_key] === undefined) {
+										this.fileindex[file_idx_key] = [tl];
+										this.filedecindex[file_idx_key] = [new vscode.Range(tl.trace_line_num, 0, tl.trace_line_num, tl.trace_line_length-1)];
+										//let dec = {range: trace_editor.document.lineAt(trace_line.trace_line_num).range};
+
+									}else { 
+										this.fileindex[file_idx_key].push(tl); 
+										this.filedecindex[file_idx_key].push(new vscode.Range(tl.trace_line_num, 0, tl.trace_line_num, tl.trace_line_length-1));
 									}
-									*/
 								}
 							}
 						}
@@ -165,75 +173,6 @@ class Addr2Line {
 	}
 }
 
-/*
-class SourceCodeLine {
-	workspace:vscode.WorkspaceFolder;
-	filepath:string;
-	linenumber:number;
-	binfile_path:string;
-	is_in_workpace:boolean;
-
-	constructor(workspace:vscode.WorkspaceFolder, filepath:string, linenumber:number, binfile_path:string){
-		this.workspace = workspace;
-		this.filepath = filepath;
-		this.linenumber = linenumber;
-		this.binfile_path = binfile_path;
-		this.is_in_workpace = this.filepath.indexOf(this.workspace.name) >= 0;
-		
-	}
-
-	isInWorkspace(){
-		return this.is_in_workpace;
-	}
-
-	getURI() {
-		if (!this.isInWorkspace()) { return undefined; }
-		let source_file = this.filepath.substring(this.filepath.indexOf(this.workspace.name) + this.workspace.name.length + 1);
-		return vscode.Uri.parse("file://" + this.workspace.uri.fsPath + "/" + source_file);
-	}
-}
-*/
-/*
-class TraceLine {
-	cycles:number;
-	pc:string;
-
-	constructor(txt:string, regex:string){
-		this.cycles = 0;
-		this.pc = "0x0";
-		let matches = txt.match(regex);
-		if (matches===null || matches.length<1) {return; }
-
-		this.cycles=parseInt(matches[1]);
-		this.pc=matches[2];
-	}
-
-	async resolve(trace_translation_cache:TranlationCache, workspace:vscode.WorkspaceFolder, binfile:string) {
-		return new Promise<SourceCodeLine>((resolve, reject) => {
-
-			//if (trace_translation_cache[this.pc] !== undefined) { resolve(trace_translation_cache[this.pc]);}
-
-			const cp = require("child_process");
-
-			cp.exec("addr2line -e " + binfile + " -i " + this.pc, (error: string, stdout: string, stderr: any) => {
-				if (error) {
-					reject(stderr);
-				}
-				
-				const stdout_lines = stdout.split("\n");
-				//const stdout_line = stdout_lines[stdout_lines.length -2];
-				const stdout_line = stdout_lines[0];
-				const coords = stdout_line.split(":");
-				const filepath = coords[0];
-				const line = parseInt(coords[1]);
-				//trace_translation_cache[this.pc] = new SourceCodeLine(workspace, filepath, line, binfile);
-				resolve(trace_translation_cache[this.pc]);
-			});
-		});
-	}
-}
-*/
-
 function highlightLines(text_editor:vscode.TextEditor, line_start:number, line_stop:number, line_select:number, select:boolean, recenter:boolean, decs:vscode.DecorationOptions []){
 
 	for (let line=line_start; line<=line_stop; line++) {
@@ -249,41 +188,6 @@ function highlightLines(text_editor:vscode.TextEditor, line_start:number, line_s
 	if (recenter && (line_select < first_visible_line || line_select > last_visible_line)) { text_editor.revealRange(text_editor.selection, vscode.TextEditorRevealType.InCenter); }
 
 }
-/*
-function highlightTrace(trace_translation_cache:TranlationCache, trace_editor:vscode.TextEditor, ws:vscode.WorkspaceFolder, binfile_uri:string, source:SourceCodeLine){
-
-	trace_editor.visibleRanges.forEach( range => {
-		let trace_line_start = range.start.line;
-		let trace_line_stop = range.end.line;
-		
-		let decs:vscode.DecorationOptions [] = [];
-		for (let i=trace_line_start; i<=trace_line_stop; i++){
-			let trace_line = new TraceLine(trace_editor.document.lineAt(i).text, trace_regex);
-			trace_line.resolve(trace_translation_cache, ws, binfile_uri).then( (other_source) => {
-				if (other_source.filepath === source.filepath) {
-					highlightLines(trace_editor, i, i, i, false, false, decs);
-				}
-			});
-		}
-	});
-	*/
-
-/*
-	let decs:vscode.DecorationOptions [] = [];
-	//highlightLines(trace_editor, 0, trace_editor.document.lineCount-1, 0, false, false, decs);
-
-	trace_editor.document.getText().split("\n").forEach( (line, index) => {
-		let trace_line = new TraceLine(trace_editor.document.lineAt(index).text, trace_regex);
-		trace_line.resolve(trace_translation_cache, ws, binfile_uri).then( (other_source) => {
-			if (other_source.filepath === source.filepath) {
-				highlightLines(trace_editor, index, index, index, false, false, decs);
-			}
-		});
-	});
-}
-*/
-
-
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -326,7 +230,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	await vscode.window.withProgress(
 		{
 		  location: vscode.ProgressLocation.Notification,
-		  title: 'Prorcessing trace file',
+		  title: 'Processing trace file',
 		  cancellable: true
 		},
 		async progress => {
@@ -339,16 +243,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	/*
-	vscode.window.onDidChangeTextEditorVisibleRanges(changeEvent => {
-
-		if (changeEvent.textEditor.document !== trace_document || current_source_code_line === undefined) {return;}
-		highlightTrace(trace_translation_cache, trace_editor, ws, binfile_uri, current_source_code_line);
-
-	});
-	*/
-
-	
 	vscode.window.onDidChangeTextEditorSelection(changeEvent => {
 
 		if (vscode.window.activeTextEditor === undefined || changeEvent.textEditor.document !== trace_document) { return; }
@@ -364,58 +258,33 @@ export async function activate(context: vscode.ExtensionContext) {
 			let source_uri = sline.uri;
 			vscode.workspace.openTextDocument(source_uri).then(doc => { 
 				vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside, true).then( source_editor => {
+					console.log("highlighting line " + sline.line + " of file " + sline.path);
 					highlightLines(source_editor, sline.line, sline.line, sline.line, true, true, []);
 
-					let decs:vscode.DecorationOptions [] = [];
-					addr2line.fileindex[sline.path].map((trace_line) => {
-						highlightLines(trace_editor, trace_line, trace_line, trace_line, false, false, decs);
-					});
+					let trace_lines_dec = addr2line.filedecindex[sline.path];
+					if (trace_lines_dec !== undefined){
 
-					//highlightLine(source_editor, source.linenumber, true, true, []);
-					//highlightTrace(trace_translation_cache, trace_editor, ws, binfile_uri, source);
+						trace_editor.setDecorations(source_code_line, trace_lines_dec);
+						console.log("highlighting " + trace_lines_dec.length + " trace lines");
+					}
 				});
 			});
-
-			//highlightLines(source_editor, tline.source_lines[0].line, source.linenumber, source.linenumber, true, true, []);
+		}
+		else {
+			console.log("No translation for line " + sel_line + "!");
 		}
 
-		/*
-		let line_txt = changeEvent.textEditor.document.lineAt(sel.start.line).text;
-
-		let selected_trace_line = new TraceLine(line_txt, trace_regex);
-
-		selected_trace_line.resolve(trace_translation_cache, ws, binfile_uri).then( (source) => {
-
-			if (source.isInWorkspace()) {
-				console.log(source.filepath);
-				console.log(source.linenumber);
-				let source_uri = <vscode.Uri>source.getURI();
-				console.log("opening: " + source_uri.fsPath);
-				current_source_code_line = source;
-				vscode.workspace.openTextDocument(source_uri).then(doc => { 
-					vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside, true).then( source_editor => {
-						highlightLines(source_editor, source.linenumber, source.linenumber, source.linenumber, true, true, []);
-						//highlightLine(source_editor, source.linenumber, true, true, []);
-						highlightTrace(trace_translation_cache, trace_editor, ws, binfile_uri, source);
-					});
-				});
-			} 
-			else {
-				console.log("The file: " + source.filepath + " (line " + source.linenumber +") is not in the current workspace! (raw: " + line_txt +")");
-			}
-		});
-		*/
 	});
 	
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('extension.helloWorld', async () => {
+	let disposable = vscode.commands.registerCommand('extension.examineTrace', async () => {
 		// The code you place here will be executed every time your command is executed
 	
 		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World!');
+		vscode.window.showInformationMessage('Trace processing complete!');
 
 	});
 
