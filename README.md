@@ -18,7 +18,7 @@ can be changed by changing the trace regex).
  - The test/ folder contains
 
 
-\!\[Example\]\(images/screen.gif\)
+![Example](images/screen.gif)
 
 ## Requirements
 
