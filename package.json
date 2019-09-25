@@ -1,6 +1,7 @@
 {
 	"name": "trace2source",
 	"displayName": "trace2source",
+	"publisher": "SalvatoreDiGirolamo",
 	"description": "",
 	"version": "0.0.1",
 	"engines": {
