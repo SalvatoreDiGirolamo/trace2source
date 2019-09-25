@@ -28,6 +28,8 @@ const open_options: vscode.OpenDialogOptions = {
 const source_code_line = vscode.window.createTextEditorDecorationType({
 	cursor: 'crosshair',
 	backgroundColor: '#FF000055',
+	overviewRulerColor: '#FF000055',
+	overviewRulerLane: vscode.OverviewRulerLane.Left
 });
 
 class SourceLine {
