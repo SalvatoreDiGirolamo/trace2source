@@ -28,9 +28,13 @@ can be changed by changing the trace regex).
 
 Not at the moment.
 
+## Install
+
+ - code --install-extension <package>.vsix 
+ - Check out the release page for the package
+
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
 
 ## Release Notes
 
