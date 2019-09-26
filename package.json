@@ -40,8 +40,8 @@
 		"typescript": "^3.6.3",
 		"vscode-test": "^1.2.0"
 	},
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/SalvatoreDiGirolamo/trace2source.git"
-    }
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SalvatoreDiGirolamo/trace2source.git"
+	}
 }
