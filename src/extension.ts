@@ -145,7 +145,8 @@ class Addr2Line {
 								let tl = trace_lines_obj[trace_obj_index];
 
 								//the line has been translated and is the file is in our workspace (well....)
-								if (!stdout_line.startsWith("??") && stdout_line.indexOf(this.workspace.name) >= 0) {
+								//note: we take only the first line of each translation (that is the file from where it actually comes from, even if it's inlined)
+								if (!stdout_line.startsWith("??") && stdout_line.indexOf(this.workspace.name) >= 0 && tl.source_lines.length<1) {
 
 									if (this.source_line_objs[stdout_line] === undefined) {
 										let coords = stdout_line.split(":");
